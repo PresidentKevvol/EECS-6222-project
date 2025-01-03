@@ -1,48 +1,13 @@
 import numpy as np
 import random
 
+from utils import *
 from polynomial import *
 from GF_Polynomials import *
 
 '''
 file for Reed-Solomon encoding scheme
 '''
-
-# utility functions
-
-def generate_binary_string(n):
-    '''
-    Generate a random number/binary string with n bits
-    should always return a str with length n of "1" and "0"
-    '''
-    number = random.getrandbits(n)
-    # Convert the number to binary
-    binary_string = format(number, '#0' + str(n+2) + 'b')[2:]
-    return binary_string
-
-def convert_to_chunks(bitstr, m, minus1=True):
-    '''
-    convert a bit string to chunks of m bits
-    for RS encoding
-    minus 1 might be needed as we are mapping each
-    m bit chunk to [-1, 2^m-2] for the GF(2^m) representation
-
-    result is a List[int] with values in [-1, 2^m -2]
-    can be fed into constructor of Polynomial_GF2m to create polynomial 
-    '''
-    l = len(bitstr)
-    # add padding at the end if not exactly multiple of m
-    if l % m != 0:
-        bs = bitstr + "0" * (m - l % m)
-    else:
-        bs = bitstr
-    res = []
-    for i in range(l // m):
-        c = int(bs[i*m:(i+1)*m], 2)
-        if minus1:
-            c -= 1
-        res.append(c)
-    return res
 
 def RS_encode_polynomial(t, mx, gx):
     '''
@@ -56,27 +21,7 @@ def RS_encode_polynomial(t, mx, gx):
     cx = mx_2t + (mx_2t % gx)
     return cx
 
-
-def codefn_list_to_bitstr(lis, m):
-    '''
-    convert code function to bitstr
-    in our use case, elements in GF(2^m)
-    are denoted as an integer in [-1, 2^m-2]
-    and the codeword polynomial should be of order
-    2^m - 1, if not, we pad in -1
-    (which are actually the 0 polynomial, or the additive identity)
-
-    this takes in a List[int]  with values in [-1, 2^m-2]
-    so one might want to use Polynomial_GF2m.to_list() if putting in a polynomial
-    '''
-    if len(lis) < 2**m - 1:
-        lis = lis + [-1,] * (2**m - 1 - len(lis))
-    
-    strs = [format(l+1, '#0' + str(m+2) + 'b')[2:] for l in lis]
-
-    return ''.join(strs)
-
-def ext_euclidean_algo(a, b):
+def ext_euclidean_algo(a, b, T):
     '''
     Extended Euclidean Algorithm
     for use in Reed Solomon decoding
@@ -88,7 +33,8 @@ def ext_euclidean_algo(a, b):
     s_, s = a.mul_identity(), a.add_identity()
     t_, t = a.add_identity(), a.mul_identity()
 
-    while r.degree >= t.degree:
+    # while r.degree >= t.degree:
+    while r.degree >= T:
         q = r_ // r
         r_, r = r, r_ - q * r
         s_, s = s, s_ - q * s
@@ -101,7 +47,7 @@ class ReedSolomon:
     Reprsesents a Reed-Solomon code system
     with encoding and decoding
     '''
-    def __init__(self, m, t):
+    def __init__(self, m, t, mode='nparray'):
         '''
         constructor specifying the alphabet size, chunk size, and munimum distance of the scheme
         m is the alphabet size as a power of 2 (in number of bits), the alphabet is converted to elements in GF(2^m)
@@ -140,6 +86,8 @@ class ReedSolomon:
             gx = gx * (X_gf2m + alph ** (i+1))
         self.gx = gx
 
+        # output mode, can be 'str' or 'nparray'
+        self.mode = mode
         
 
     def bitstr_to_polynomial(self, bitstr):
@@ -156,9 +104,16 @@ class ReedSolomon:
         message is a bit string of length m * k = m * (2^m-1 - 2t)
         returns a codeword, a bit string of length m * n = m * (2^m-1)
         '''
+        assert len(message) == self.k * self.m, f"wrong chunk size,  chunks should be {self.k} * {self.m} = {self.k * self.m} bits"
+        
         mx = self.bitstr_to_polynomial(message)
         cx = RS_encode_polynomial(self.t, mx, self.gx)
-        codeword = codefn_list_to_bitstr(cx.to_list(), self.m)
+        if self.mode == 'str':
+            # string mode
+            codeword = codefn_list_to_bitstr(cx.to_list(), self.m)
+        else:
+            # np array mode
+            codeword = codefn_list_to_bit_array(cx.to_list(), self.m)
         return codeword
 
     def decode(self, codeword):
@@ -168,6 +123,8 @@ class ReedSolomon:
         codeword is a bit string of length m * n = m * (2^m-1)
         returns the decoded message, a bit string of length m * k = m * (2^m-1 - 2t) 
         '''
+        assert len(codeword) == self.n * self.m, f"wrong chunk size,  chunks should be {self.n} * {self.m} = {self.n * self.m} bits"
+        
         # convert codeword back to a function
         code_fn = self.bitstr_to_polynomial(codeword)
         
@@ -182,7 +139,7 @@ class ReedSolomon:
         # run extended Euclidean algorithm
         # a(x) = x^2t   (polynomial with just that term under this field)
         ax = Polynomial_GF2m([-1,] * (2*self.t) + [0], self.m)
-        r_i, s_i, t_i = ext_euclidean_algo(ax, syndrome)
+        r_i, s_i, t_i = ext_euclidean_algo(ax, syndrome, self.t)
 
         # omega and lambda polynomial for subsequent steps
         field_zero = Element_GF2m(-1, self.m)
@@ -214,10 +171,16 @@ class ReedSolomon:
         # pad the list with additive identity if highest terms are all 0 aka alpha^(-inf)
         if len(decode_coeffs) < self.n:
             decode_coeffs = decode_coeffs + [Element_GF2m(-1, self.m),] * (self.n - len(decode_coeffs))
-        # add is same as subtract
+        # add (subtract) back the error values to get the original coefficients of the code polynomial
         for pos in error_fixes:
             decode_coeffs[pos] = decode_coeffs[pos] + error_fixes[pos]
+        
         # convert back to bitstr
-        err_corrected = codefn_list_to_bitstr([p.po for p in decode_coeffs], self.m)
+        if self.mode == 'str':
+            # string mode
+            err_corrected = codefn_list_to_bitstr([p.po for p in decode_coeffs], self.m)
+        else:
+            # np array mode
+            err_corrected = codefn_list_to_bit_array([p.po for p in decode_coeffs], self.m)
         # the decoded message is the tail
         return err_corrected, err_corrected[self.m*2*self.t:]

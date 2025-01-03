@@ -1,3 +1,5 @@
+import numpy as np
+
 from polynomial import *
 from gen_polys import *
 
@@ -191,6 +193,10 @@ class Polynomial_GF2m:
         m-th order polynomials in GF(2)
         '''
         self.m = m
+
+        # convert back to python list for easier tinkering in code in this class
+        if type(coeff) == np.ndarray:
+            coeff = coeff.tolist()
 
         # skim higher order terms
         # -1 here means -inf and is the additive identity aka 0 polynomial in GF(2)

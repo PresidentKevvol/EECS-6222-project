@@ -1,22 +1,11 @@
 import numpy as np
+from utils import *
 
 '''
 file for convolutional code
 includes encoding
 and decoding with Viterbi algorithm
 '''
-
-def to_bits_array(x, n, dtype=int):
-    '''
-    convert an integer x to an n bit array
-    '''
-    return np.array([int(i) for i in format(x, '#0' + str(n+2) + 'b')[2:]], dtype=dtype)
-
-def hamming_dist(a, b):
-    '''
-    hamming distance of two bit arrays
-    '''
-    return np.sum((a != b))
 
 def convolute(data, kernel):
     '''
