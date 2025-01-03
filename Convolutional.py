@@ -159,15 +159,6 @@ def viterbi_decode_convolutional(codewords, g, l, trans):
     # keep track of each hidden state's previous hidden state at each chunk location
     prev = np.empty((t, S), dtype=int)
 
-    # list for int to bit array, for easy access
-    # (not need to convert number to array each cycle of the nested for loop)
-    bit_conversions = []
-    bit_conversions_p1 = []
-    for i in range(S):
-        as_bits = to_bits_array(i, l-1)
-        bit_conversions.append(as_bits)
-        bit_conversions_p1.append([])
-
     '''
     start with the fact that we know the hidden state must start with (0,0,0,...0)
     noted by the (l-1) zero padding or hardware encoder starts with all 0
@@ -190,8 +181,6 @@ def viterbi_decode_convolutional(codewords, g, l, trans):
         cur_chunk = codewords[(i)*g:(i+1)*g]
         # for each possible hidden state
         for si in range(S):
-            # si_as_bits = bit_conversions[si]
-
             # 2 cases: 'next' bit, which is actually current bit is 0 or 1
             # when added to the hidden state, and then encoded with convolution, will
             # lead to a codeword chunk of trans[si][next_bit]
